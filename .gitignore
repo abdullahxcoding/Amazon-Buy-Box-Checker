@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+
+.env
+
+logs/*.log
+
+data/state.json
+data/alerts_history.jsonl
+data/check.lock
+data/asins.csv
