@@ -10,3 +10,10 @@ data/state.json
 data/alerts_history.jsonl
 data/check.lock
 data/asins.csv
+
+# PyInstaller build output — rebuild locally with build_exe.ps1 instead of
+# committing a 50MB+ binary to git.
+build/
+dist/
+*.spec
+AmazonBuyBoxChecker.exe

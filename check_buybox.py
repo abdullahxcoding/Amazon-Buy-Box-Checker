@@ -23,7 +23,7 @@ from ip_guard import ensure_vpn_connected
 from offer_sources import get_offer_source
 from state_store import load_state, save_state
 
-LOCK_PATH = os.path.join("data", "check.lock")
+LOCK_PATH = os.path.join(config.BASE_DIR, "data", "check.lock")
 
 
 @contextlib.contextmanager

@@ -45,9 +45,15 @@ IP, the fix is to reconnect Privado to a different server.
 
 ## 2. Run the app
 
+Either run it from source:
+
 ```powershell
 .venv\Scripts\python desktop_app.py
 ```
+
+...or build it once into a standalone `.exe` (see "Package as a standalone
+.exe" below) and just double-click `AmazonBuyBoxChecker.exe` from then on —
+no terminal, no venv activation needed.
 
 - **ASIN list box** (left panel): one ASIN per line, or `ASIN,Label` — only
   include ASINs currently Sold/Shipped by Amazon, that's the required
@@ -106,6 +112,34 @@ Scheduler via `run_hourly.ps1`) instead of leaving the app open:
 This is not the primary way to run the project day-to-day — the desktop
 app's Analyzer switch is — but it shares all the same underlying logic
 (`check_one()` in `check_buybox.py`), so results are identical either way.
+
+## Package as a standalone .exe
+
+Build it once, then just double-click the `.exe` from then on:
+
+```powershell
+.\build_exe.ps1
+```
+
+This installs PyInstaller into the venv if needed, builds
+`AmazonBuyBoxChecker.exe`, and copies it into the project folder. Pin it to
+your taskbar or desktop for one-click launching — no terminal or venv
+activation required to run it day-to-day.
+
+Notes:
+- `.env` and `data/asins.csv` are still read from the project folder next
+  to the `.exe` (not bundled inside it), so your config and ASIN list
+  persist across rebuilds and updates. Keep the `.exe` in this folder.
+- Playwright's Chromium browser (installed separately via
+  `playwright install chromium`) is NOT bundled into the `.exe` — it's
+  looked up from its normal install location on this machine, so that
+  step still only needs to be done once per machine, not per build.
+- Rebuild (`.\build_exe.ps1` again) any time you or I change the Python
+  source files — the `.exe` is a snapshot, it doesn't auto-update.
+- The `.exe` isn't committed to git (it's 50MB+ and just a build
+  artifact) — `dist/`, `build/`, `*.spec`, and the root-level `.exe` are
+  all gitignored. Anyone else working from this repo runs `build_exe.ps1`
+  themselves to get their own copy.
 
 ## Switching to SP-API later
 

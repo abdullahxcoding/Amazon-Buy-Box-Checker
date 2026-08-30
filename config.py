@@ -1,7 +1,18 @@
 import os
+import sys
 from dotenv import load_dotenv
 
-load_dotenv()
+# Anchor all relative paths to where the app actually lives, not the
+# current working directory — cwd is unreliable once this runs as a
+# packaged .exe (varies by how it's launched: double-click, shortcut with
+# a different "Start in" folder, Task Scheduler, etc.). sys.executable is
+# the real .exe location when frozen by PyInstaller; __file__ otherwise.
+if getattr(sys, "frozen", False):
+    BASE_DIR = os.path.dirname(sys.executable)
+else:
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+load_dotenv(os.path.join(BASE_DIR, ".env"))
 
 OFFER_SOURCE = os.getenv("OFFER_SOURCE", "scraper").strip().lower()
 
@@ -38,7 +49,7 @@ ALERT_EMAIL_TO = os.getenv("ALERT_EMAIL_TO", "").strip()
 EMAIL_ENABLED = bool(SMTP_HOST and SMTP_USER and SMTP_PASSWORD and ALERT_EMAIL_FROM and ALERT_EMAIL_TO)
 
 # --- Paths ---
-ASIN_CSV_PATH = os.path.join("data", "asins.csv")
-STATE_JSON_PATH = os.path.join("data", "state.json")
-ALERTS_HISTORY_PATH = os.path.join("data", "alerts_history.jsonl")
-LOG_PATH = os.path.join("logs", "checker.log")
+ASIN_CSV_PATH = os.path.join(BASE_DIR, "data", "asins.csv")
+STATE_JSON_PATH = os.path.join(BASE_DIR, "data", "state.json")
+ALERTS_HISTORY_PATH = os.path.join(BASE_DIR, "data", "alerts_history.jsonl")
+LOG_PATH = os.path.join(BASE_DIR, "logs", "checker.log")
