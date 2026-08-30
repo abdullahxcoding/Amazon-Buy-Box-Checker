@@ -1,0 +1,5 @@
+2026-08-30 19:32:37,880 INFO Current public IP for this run: 81.171.74.14
+2026-08-30 19:32:37,886 INFO HOME_IP not set in .env, so VPN-connected status cannot be verified automatically. Confirm manually that Privado VPN is connected before scheduled runs.
+2026-08-30 19:35:07,636 WARNING LOST: B0FRRW4N96 (Product5) -- Seller: Incentives
+2026-08-30 19:36:04,470 WARNING LOST: B0CW97DZZD (Product7) -- Seller: Incentives
+2026-08-30 19:36:38,664 WARNING LOST: B00M9B66BU (Product8) -- Seller: Incentives
