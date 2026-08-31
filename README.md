@@ -121,25 +121,34 @@ Build it once, then just double-click the `.exe` from then on:
 .\build_exe.ps1
 ```
 
-This installs PyInstaller into the venv if needed, builds
-`AmazonBuyBoxChecker.exe`, and copies it into the project folder. Pin it to
-your taskbar or desktop for one-click launching — no terminal or venv
-activation required to run it day-to-day.
+This installs PyInstaller into the venv if needed, builds both
+`AmazonBuyBoxChecker.exe` (the app) and `InstallBrowser.exe` (a one-time
+setup helper, see below), and copies both into the project folder. Pin
+`AmazonBuyBoxChecker.exe` to your taskbar or desktop for one-click
+launching — no terminal or venv activation required to run it day-to-day.
 
-Notes:
-- `.env` and `data/asins.csv` are still read from the project folder next
-  to the `.exe` (not bundled inside it), so your config and ASIN list
-  persist across rebuilds and updates. Keep the `.exe` in this folder.
-- Playwright's Chromium browser (installed separately via
-  `playwright install chromium`) is NOT bundled into the `.exe` — it's
-  looked up from its normal install location on this machine, so that
-  step still only needs to be done once per machine, not per build.
+**Moving to a new device:** copy `AmazonBuyBoxChecker.exe` there — that's
+now genuinely all you need (its defaults already target amazon.co.uk
+correctly, no `.env` required). But Playwright's Chromium browser
+(~100-150MB) is NOT bundled inside the app exe, so on a device that's
+never run this before, also copy `InstallBrowser.exe` and **run it once
+first**. It downloads just the browser (using the exact Playwright version
+bundled in the app, so there's no version-mismatch risk) — after that
+one-time step, `AmazonBuyBoxChecker.exe` works normally on that device from
+then on. You only need to do this once per device, not per launch.
+
+Other notes:
+- `data/asins.csv` is still read from the project folder next to the
+  `.exe` (not bundled inside it), so your ASIN list persists across
+  rebuilds and updates if you keep the `.exe` in the same folder.
+- `data/` and `logs/` folders are created automatically on first run if
+  they don't already exist (e.g. on a freshly-copied device).
 - Rebuild (`.\build_exe.ps1` again) any time you or I change the Python
   source files — the `.exe` is a snapshot, it doesn't auto-update.
-- The `.exe` isn't committed to git (it's 50MB+ and just a build
-  artifact) — `dist/`, `build/`, `*.spec`, and the root-level `.exe` are
-  all gitignored. Anyone else working from this repo runs `build_exe.ps1`
-  themselves to get their own copy.
+- Neither `.exe` is committed to git (they're 50MB+ each and just build
+  artifacts) — `dist/`, `build/`, `*.spec`, and both root-level `.exe`
+  files are all gitignored. Anyone else working from this repo runs
+  `build_exe.ps1` themselves to get their own copies.
 
 ## Switching to SP-API later
 
