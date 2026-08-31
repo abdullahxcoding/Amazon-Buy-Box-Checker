@@ -10,6 +10,7 @@ if (-not (Test-Path ".venv\Scripts\pyinstaller.exe")) {
     --onefile `
     --windowed `
     --collect-all customtkinter `
+    --collect-all playwright `
     --hidden-import=playwright.sync_api `
     --noconfirm `
     desktop_app.py

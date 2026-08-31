@@ -17,6 +17,7 @@ import queue
 import random
 import threading
 import time
+import traceback
 
 import config
 from alerts import logger
@@ -56,8 +57,19 @@ class Analyzer:
         self.update_queue.put(("analyzer_stopped", None))
 
     def _loop(self) -> None:
+        # This runs in a background daemon thread — an uncaught exception
+        # here would otherwise kill the thread silently (no console when
+        # packaged with --windowed), leaving the toggle showing "on" with
+        # no further activity and no clue why. Always catch, log, and
+        # surface it to the UI instead.
         while not self._stop_event.is_set():
-            self._run_check_cycle()
+            try:
+                self._run_check_cycle()
+            except Exception:
+                logger.exception("Analyzer check cycle crashed")
+                self.update_queue.put(("analyzer_crashed", traceback.format_exc()))
+                self._running = False
+                return
             if self._stop_event.is_set():
                 break
             next_run_at = time.time() + CHECK_INTERVAL_SECONDS

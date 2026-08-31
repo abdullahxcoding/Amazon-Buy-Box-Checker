@@ -14,6 +14,18 @@ else:
 
 load_dotenv(os.path.join(BASE_DIR, ".env"))
 
+# When packaged with PyInstaller, bundling Playwright's driver also pulls in
+# an empty placeholder ".local-browsers" folder next to it, which makes
+# Playwright's Node driver assume browsers live there (in the exe's
+# temporary per-run extraction folder) instead of its real shared install
+# location. Point it at the real location explicitly so it doesn't matter
+# what got bundled. setdefault() so an explicit env var (or a portable
+# install) can still override this.
+os.environ.setdefault(
+    "PLAYWRIGHT_BROWSERS_PATH",
+    os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "ms-playwright"),
+)
+
 OFFER_SOURCE = os.getenv("OFFER_SOURCE", "scraper").strip().lower()
 
 # --- Scraper settings ---

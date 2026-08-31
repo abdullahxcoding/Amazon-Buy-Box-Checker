@@ -265,6 +265,16 @@ class App(ctk.CTk):
             self.status_label.configure(text="Checking now...")
         elif event == "check_aborted_vpn":
             self.status_label.configure(text="Check skipped: VPN not connected")
+        elif event == "analyzer_crashed":
+            self.status_label.configure(text="Stopped: error (see logs/checker.log)")
+            self.switch_var.set("off")
+            self.analyzer_switch.configure(text="Analyzer: OFF")
+            self.countdown_label.configure(text="")
+            self._next_check_at = None
+            messagebox.showerror(
+                "Analyzer stopped unexpectedly",
+                "The analyzer hit an error and stopped:\n\n" + str(payload)[-1200:] +
+                "\n\nFull details are in logs/checker.log.")
         elif event == "check_finished":
             if self.analyzer.is_running():
                 self.status_label.configure(text="Running (waiting for next check)")
