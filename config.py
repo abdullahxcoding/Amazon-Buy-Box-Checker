@@ -14,17 +14,22 @@ else:
 
 load_dotenv(os.path.join(BASE_DIR, ".env"))
 
-# When packaged with PyInstaller, bundling Playwright's driver also pulls in
-# an empty placeholder ".local-browsers" folder next to it, which makes
-# Playwright's Node driver assume browsers live there (in the exe's
-# temporary per-run extraction folder) instead of its real shared install
-# location. Point it at the real location explicitly so it doesn't matter
-# what got bundled. setdefault() so an explicit env var (or a portable
-# install) can still override this.
-os.environ.setdefault(
-    "PLAYWRIGHT_BROWSERS_PATH",
-    os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "ms-playwright"),
-)
+# The packaged .exe bundles the actual Chromium browser inside itself (see
+# build_exe.ps1's --add-data) so it's fully self-contained on any device —
+# no separate browser install step. PyInstaller's onefile mode extracts
+# bundled data to a temporary folder (sys._MEIPASS) at startup; if that
+# extracted copy is present, point Playwright at it directly. Otherwise
+# (running from source, or a build without a bundled browser) fall back to
+# the normal shared install location, same as a regular `playwright install
+# chromium` would use.
+_bundled_browsers = os.path.join(getattr(sys, "_MEIPASS", ""), "ms-playwright")
+if getattr(sys, "frozen", False) and os.path.isdir(_bundled_browsers):
+    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = _bundled_browsers
+else:
+    os.environ.setdefault(
+        "PLAYWRIGHT_BROWSERS_PATH",
+        os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "ms-playwright"),
+    )
 
 OFFER_SOURCE = os.getenv("OFFER_SOURCE", "scraper").strip().lower()
 

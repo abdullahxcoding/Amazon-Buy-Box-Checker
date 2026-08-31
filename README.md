@@ -121,21 +121,25 @@ Build it once, then just double-click the `.exe` from then on:
 .\build_exe.ps1
 ```
 
-This installs PyInstaller into the venv if needed, builds both
-`AmazonBuyBoxChecker.exe` (the app) and `InstallBrowser.exe` (a one-time
-setup helper, see below), and copies both into the project folder. Pin
-`AmazonBuyBoxChecker.exe` to your taskbar or desktop for one-click
-launching — no terminal or venv activation required to run it day-to-day.
+This installs PyInstaller into the venv if needed, builds
+`AmazonBuyBoxChecker.exe` with Playwright's Chromium browser bundled
+directly inside it, and copies it into the project folder. Pin it to your
+taskbar or desktop for one-click launching — no terminal or venv
+activation required to run it day-to-day.
 
-**Moving to a new device:** copy `AmazonBuyBoxChecker.exe` there — that's
-now genuinely all you need (its defaults already target amazon.co.uk
-correctly, no `.env` required). But Playwright's Chromium browser
-(~100-150MB) is NOT bundled inside the app exe, so on a device that's
-never run this before, also copy `InstallBrowser.exe` and **run it once
-first**. It downloads just the browser (using the exact Playwright version
-bundled in the app, so there's no version-mismatch risk) — after that
-one-time step, `AmazonBuyBoxChecker.exe` works normally on that device from
-then on. You only need to do this once per device, not per launch.
+The exe is fully self-contained — around **170MB**, since it embeds a real
+Chromium browser (not just the automation code). **Moving to a new device
+is just copying this one file** — no `.env`, no separate browser install
+step, no setup script. Its defaults already target amazon.co.uk correctly.
+Trade-off: launches take a few extra seconds compared to a small exe,
+since PyInstaller's onefile mode extracts the whole bundle (including the
+browser) to a temp folder on every startup.
+
+Building requires Chromium to already be installed in your own dev
+environment first (`.venv\Scripts\playwright install chromium` — a
+one-time step on the machine you build from, not on machines you run the
+built exe on). The build script finds it automatically under
+`%LOCALAPPDATA%\ms-playwright\` and bundles it in.
 
 Other notes:
 - `data/asins.csv` is still read from the project folder next to the
@@ -145,10 +149,10 @@ Other notes:
   they don't already exist (e.g. on a freshly-copied device).
 - Rebuild (`.\build_exe.ps1` again) any time you or I change the Python
   source files — the `.exe` is a snapshot, it doesn't auto-update.
-- Neither `.exe` is committed to git (they're 50MB+ each and just build
-  artifacts) — `dist/`, `build/`, `*.spec`, and both root-level `.exe`
-  files are all gitignored. Anyone else working from this repo runs
-  `build_exe.ps1` themselves to get their own copies.
+- The `.exe` isn't committed to git (it's 170MB+ and just a build
+  artifact) — `dist/`, `build/`, `*.spec`, and the root-level `.exe` are
+  all gitignored. Anyone else working from this repo runs `build_exe.ps1`
+  themselves to get their own copy.
 
 ## Switching to SP-API later
 
