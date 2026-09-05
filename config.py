@@ -37,8 +37,14 @@ OFFER_SOURCE = os.getenv("OFFER_SOURCE", "scraper").strip().lower()
 # IP rotation is handled by connecting Privado VPN at the OS level before
 # running the checker (see ip_guard.py) — not a per-request proxy pool.
 HOME_IP = os.getenv("HOME_IP", "").strip()
-MIN_DELAY_SECONDS = float(os.getenv("MIN_DELAY_SECONDS", "8"))
-MAX_DELAY_SECONDS = float(os.getenv("MAX_DELAY_SECONDS", "20"))
+# Trimmed from the original 8-20s default for large ASIN lists (1000+) —
+# still randomized (not a robotic fixed interval) but shorter, since the
+# browser-reuse change already cut a lot of per-ASIN overhead and a very
+# long list needs the per-item cost down to realistically finish a cycle.
+# Raise these back up in .env if a smaller list can afford to be more
+# cautious about request pacing.
+MIN_DELAY_SECONDS = float(os.getenv("MIN_DELAY_SECONDS", "3"))
+MAX_DELAY_SECONDS = float(os.getenv("MAX_DELAY_SECONDS", "8"))
 # This project only ever targets amazon.co.uk — hardcoded as the real
 # default (not just an .env fallback) so the app behaves correctly out of
 # the box even if the .exe is copied to another machine without its .env.

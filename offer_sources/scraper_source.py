@@ -61,6 +61,48 @@ SHIPPER_RE = re.compile(r"\bShipper\b\s*\n?\s*([^\n]{1,80})", re.IGNORECASE)
 SOLD_BY_RE = re.compile(r"Sold by[:\s]+([^.\n|]+?)(?:\s*and\s*Ships from|\s*\||$)", re.IGNORECASE)
 FULFILLED_BY_AMAZON_RE = re.compile(r"Fulfilled by Amazon", re.IGNORECASE)
 
+# Selector-based (not regex-on-body-text) because a product page can show
+# several prices at once (RRP struck through, gift-card-discounted price,
+# "other sellers from" price) — picking the wrong one from flattened text
+# would silently compare against garbage. :not(.a-text-price) excludes the
+# struck-through "was" price; these are the standard containers Amazon uses
+# for the actual current Buy Box price.
+PRICE_SELECTORS = [
+    "#corePriceDisplay_desktop_feature_div .a-price:not(.a-text-price) .a-offscreen",
+    "#corePrice_feature_div .a-price:not(.a-text-price) .a-offscreen",
+    "#tp_price_block_total_price_ww .a-offscreen",
+    "#priceblock_ourprice",
+    "#priceblock_dealprice",
+]
+PRICE_NUM_RE = re.compile(r"(\d[\d,]*\.\d{2})")
+
+
+def _parse_price_text(text: str) -> float | None:
+    m = PRICE_NUM_RE.search(text)
+    if not m:
+        return None
+    try:
+        return float(m.group(1).replace(",", ""))
+    except ValueError:
+        return None
+
+
+def _extract_price(page) -> float | None:
+    for selector in PRICE_SELECTORS:
+        try:
+            locator = page.locator(selector).first
+            if locator.count() == 0:
+                continue
+            text = locator.text_content(timeout=2000)
+            if not text:
+                continue
+            price = _parse_price_text(text)
+            if price is not None:
+                return price
+        except Exception:
+            continue
+    return None
+
 
 def _extract_shipper_seller(body_text: str):
     """Returns (shipper_name_or_None, seller_name_or_None)."""
@@ -94,45 +136,102 @@ def _debug_snippet(body_text: str) -> str:
 
 
 class ScraperOfferSource(OfferSource):
-    def _fetch_body_text(self, asin: str) -> tuple[str | None, str | None]:
-        """Returns (body_text, None) on success, or (None, error_message)
-        after exhausting retries. Only navigation/timeout failures are
-        retried — those are the transient, VPN-flakiness kind."""
+    """Keeps one Playwright + browser process alive across an entire check
+    cycle (use as `with ScraperOfferSource() as source:`) instead of
+    launching/closing a fresh browser per ASIN — with 1000 ASINs, that
+    launch overhead alone previously added up to real minutes. Each ASIN
+    still gets its own fresh browser *context* (cheap — no new process,
+    just a clean cookie/session slate), so isolation between checks is
+    unchanged. If the shared browser ever crashes mid-cycle, it's detected
+    and relaunched automatically on the next attempt.
+
+    Falls back to working correctly even if used without `with` (lazily
+    launches the browser on first use) — but then never closes it itself,
+    so callers should always use the context-manager form in a check loop.
+    """
+
+    def __init__(self):
+        self._playwright = None
+        self._browser = None
+
+    def __enter__(self):
+        self._ensure_browser()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self._close_browser()
+        return False
+
+    def _ensure_browser(self):
+        if self._browser is not None and self._browser.is_connected():
+            return
+        self._close_browser()
+        self._playwright = sync_playwright().start()
+        self._browser = self._playwright.chromium.launch(headless=True)
+
+    def _close_browser(self):
+        if self._browser is not None:
+            try:
+                self._browser.close()
+            except Exception:
+                pass
+            self._browser = None
+        if self._playwright is not None:
+            try:
+                self._playwright.stop()
+            except Exception:
+                pass
+            self._playwright = None
+
+    def _fetch_page_data(self, asin: str) -> tuple[str | None, float | None, str | None]:
+        """Returns (body_text, price, None) on success, or (None, None,
+        error_message) after exhausting retries. Only navigation/timeout
+        failures are retried — those are the transient, VPN-flakiness kind.
+        price may be None on success too (page loaded fine, price simply
+        wasn't found by any selector) — that's not treated as a failure."""
         url = f"https://www.{config.AMAZON_DOMAIN}/dp/{asin}"
         last_error = None
 
         for attempt in range(1, MAX_NAVIGATION_ATTEMPTS + 1):
-            with sync_playwright() as p:
-                browser = p.chromium.launch(headless=True)
+            try:
+                self._ensure_browser()
+                context = self._browser.new_context(
+                    user_agent=random.choice(USER_AGENTS),
+                    viewport={"width": 1280, "height": 1000},
+                    locale="en-US",
+                )
                 try:
-                    context = browser.new_context(
-                        user_agent=random.choice(USER_AGENTS),
-                        viewport={"width": 1280, "height": 1000},
-                        locale="en-US",
-                    )
                     page = context.new_page()
-                    try:
-                        page.goto(url, timeout=30000, wait_until="domcontentloaded")
-                        page.wait_for_timeout(1500)
-                        return page.inner_text("body"), None
-                    except Exception as e:
-                        last_error = str(e)
-                        logger.warning("Scrape navigation attempt %d/%d failed for %s: %s",
-                                        attempt, MAX_NAVIGATION_ATTEMPTS, asin, e)
-                    finally:
-                        context.close()
+                    page.goto(url, timeout=30000, wait_until="domcontentloaded")
+                    page.wait_for_timeout(1500)
+                    body_text = page.inner_text("body")
+                    price = _extract_price(page)
+                    return body_text, price, None
                 finally:
-                    browser.close()
+                    context.close()
+            except Exception as e:
+                # Covers navigation/timeout failures AND the shared browser
+                # having crashed/disconnected — both are worth retrying.
+                # Some exceptions (certain Playwright internal errors, a
+                # crashed browser process) stringify to an empty message —
+                # fall back to repr()/type name so the log and UI always
+                # show something diagnosable instead of a blank string.
+                last_error = str(e) or repr(e) or f"{type(e).__name__} (no error message)"
+                logger.warning("Scrape attempt %d/%d failed for %s: %s",
+                                attempt, MAX_NAVIGATION_ATTEMPTS, asin, last_error)
+                # Force a relaunch on the next attempt in case the browser
+                # process itself is what's actually broken.
+                self._close_browser()
 
             if attempt < MAX_NAVIGATION_ATTEMPTS:
                 time.sleep(RETRY_BACKOFF_SECONDS)
 
         logger.error("Scrape navigation failed for %s after %d attempts: %s",
                       asin, MAX_NAVIGATION_ATTEMPTS, last_error)
-        return None, last_error
+        return None, None, last_error
 
     def get_buybox_offer(self, asin: str) -> BuyBoxOffer:
-        body_text, error = self._fetch_body_text(asin)
+        body_text, price, error = self._fetch_page_data(asin)
         if body_text is None:
             return BuyBoxOffer(asin=asin, found=False, is_sold_by_amazon=False,
                                 raw_note=f"navigation error after {MAX_NAVIGATION_ATTEMPTS} attempts: {error}")
@@ -160,6 +259,8 @@ class ScraperOfferSource(OfferSource):
         detail = f"Seller: {seller_name}"
         if shipper_name and shipper_name != seller_name:
             detail += f" | Shipper: {shipper_name}"
+        if price is not None:
+            detail += f" | Price: £{price:.2f}"
 
         return BuyBoxOffer(
             asin=asin,
@@ -167,5 +268,6 @@ class ScraperOfferSource(OfferSource):
             is_sold_by_amazon=is_amazon,
             seller_identifier=seller_name,
             is_fulfilled_by_amazon=is_fba,
+            price=price,
             raw_note=detail,
         )

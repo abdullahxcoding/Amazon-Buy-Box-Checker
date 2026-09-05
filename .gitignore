@@ -18,3 +18,5 @@ dist/
 *.spec
 AmazonBuyBoxChecker.exe
 InstallBrowser.exe
+amazon-list-checker.zip
+*.zip

@@ -32,7 +32,21 @@ Edit `.env`:
   app will skip a check (rather than scrape from your raw IP) if it detects
   you're still on that IP, i.e. VPN not connected.
 - `MIN_DELAY_SECONDS` / `MAX_DELAY_SECONDS` — random delay between checking
-  each ASIN, to look less like a bot.
+  each ASIN, to look less like a bot. Defaults (3-8s) are trimmed for large
+  lists (hundreds to 1000+ ASINs); raise these back up (e.g. 8/20) for a
+  small list that can afford to be more cautious about request pacing.
+
+**Performance at scale (large ASIN lists):** one browser process is kept
+open for the whole check cycle instead of launching a fresh one per ASIN
+(previously real overhead at 1000+ ASINs) — each ASIN still gets its own
+clean browser context, so isolation is unchanged. Even so, per-ASIN time is
+dominated by real page-load time over the VPN (often 5-20s) plus the
+delay above, not launch overhead — so a list of 1000 will still take
+multiple hours end-to-end, it just no longer also pays a redundant
+browser-launch tax on top. The Analyzer's "hourly" cadence still applies
+between full cycles, not between individual ASINs — with a list this
+large, expect each ASIN to effectively be re-checked every few hours
+rather than every hour, since one full pass takes longer than an hour.
 
 **IP rotation via Privado VPN:** connect Privado VPN before flipping the
 Analyzer on, and leave it connected the whole time the app is running
@@ -55,29 +69,41 @@ Either run it from source:
 .exe" below) and just double-click `AmazonBuyBoxChecker.exe` from then on —
 no terminal, no venv activation needed.
 
-- **ASIN list box** (left panel): one ASIN per line, or `ASIN,Label` — only
-  include ASINs currently Sold/Shipped by Amazon, that's the required
-  starting state this tool watches for drift away from. Loads automatically
-  from `data/asins.csv` if you've used this before; "Save list" writes your
-  edits back to that file without starting a check.
-- **Load CSV...** — import a CSV (`asin` column required, `label` optional,
-  header casing doesn't matter) instead of typing the list by hand.
+- **ASIN list box** (left panel): one per line — `ASIN`, `ASIN,Label`, or
+  `ASIN,Label,ExpectedPrice`. Only include ASINs currently Sold/Shipped by
+  Amazon, that's the required starting state this tool watches for drift
+  away from. Prices are plain numbers (`9.99`, not `£9.99` or `1,234.56` —
+  the currency symbol is stripped automatically but a comma thousands
+  separator will be misread as a column break in this box; leave the price
+  off if you need one). Loads automatically from `data/asins.csv` if you've
+  used this before; "Save list" writes your edits back to that file without
+  starting a check.
+- **Load CSV...** — import a CSV (`asin` column required, `label` and
+  `expected_price`/`price` columns optional, header casing doesn't matter,
+  column order doesn't matter for this path) instead of typing the list by
+  hand.
+- **Price checking** — give an ASIN an expected price and every check also
+  compares the live price against it (only while Amazon holds the Buy Box —
+  a vendor takeover is reported as that issue, not a price mismatch, since
+  it's the more serious problem). Leave the price blank for an ASIN to skip
+  price checking for it and only watch the seller.
 - **Analyzer switch** — flip it on to start: checks the whole list right
   away, then every hour on the hour from that point, until you flip it off.
   Turning it off stops immediately (including mid-check, between ASINs —
   it won't force you to wait through the rest of a running check).
-- **Listings tab** — live status per ASIN: green "ok" / red "alert" (shows
-  which seller currently holds the Buy Box) / gray "check_failed" (page
-  navigation kept timing out after 3 retries, or the page layout didn't
-  match — not a real Buy Box loss). Each ASIN's navigation is retried up to
-  3 times with a short delay between attempts before being marked failed —
-  a VPN connection can intermittently stall an individual request even
-  while others succeed fine, so isolated timeouts usually resolve on retry.
-  A "Clear" button at the top of this tab resets all statuses back to
-  pending.
-- **History tab** — full log of lost / recovered / check-failed events over
-  time, newest first. Its own "Clear" button permanently wipes the history
-  file (asks for confirmation first).
+- **Listings tab** — live status per ASIN: green "ok" / red "alert" (vendor
+  took the Buy Box — shows who) / amber "price_mismatch" (still sold by
+  Amazon, but the live price doesn't match the expected price you set) /
+  gray "check_failed" (page navigation kept timing out after 3 retries, or
+  the page layout didn't match — not a real issue with the listing itself).
+  Each ASIN's navigation is retried up to 3 times with a short delay
+  between attempts before being marked failed — a VPN connection can
+  intermittently stall an individual request even while others succeed
+  fine, so isolated timeouts usually resolve on retry. A "Clear" button at
+  the top of this tab resets all statuses back to pending.
+- **History tab** — full log of lost / price_mismatch / recovered /
+  check-failed events over time, newest first. Its own "Clear" button
+  permanently wipes the history file (asks for confirmation first).
 - Closing the app window stops the analyzer — it only runs while the app is
   open and the switch is on.
 
@@ -90,7 +116,11 @@ no terminal, no venv activation needed.
 - If SMTP settings are filled in in `.env`, email alerts are also sent:
   - `[Buy Box ALERT]` when a listing drifts away from Amazon as seller —
     repeats every check while the issue persists.
-  - `[Buy Box RESOLVED]` once, when Amazon wins the Buy Box back.
+  - `[Price ALERT]` when Amazon is still the seller but the live price
+    doesn't match the expected price you set — repeats every check while
+    it persists.
+  - `[RESOLVED]` once, when either issue clears (Amazon wins the Buy Box
+    back and/or the price matches again).
 - A failed/blocked scrape does NOT fire a false "lost Buy Box" alert — it's
   logged as a check failure instead, so you can tell scraper problems apart
   from real Buy Box losses.

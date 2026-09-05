@@ -85,19 +85,22 @@ class Analyzer:
             return
 
         state = load_state()
-        source = get_offer_source()
 
-        for i, row in enumerate(self._asin_rows):
-            if self._stop_event.is_set():
-                break
+        # `with` keeps one browser process alive for the whole cycle
+        # (scraper source) instead of launching/closing one per ASIN —
+        # matters a lot once the list gets into the hundreds/thousands.
+        with get_offer_source() as source:
+            for i, row in enumerate(self._asin_rows):
+                if self._stop_event.is_set():
+                    break
 
-            result = check_one(source, row["asin"], row["label"], state)
-            save_state(state)
-            self.update_queue.put(("row_update", result))
+                result = check_one(source, row["asin"], row["label"], row.get("expected_price"), state)
+                save_state(state)
+                self.update_queue.put(("row_update", result))
 
-            is_last = i == len(self._asin_rows) - 1
-            if not is_last and not self._stop_event.is_set():
-                delay = random.uniform(config.MIN_DELAY_SECONDS, config.MAX_DELAY_SECONDS)
-                self._stop_event.wait(timeout=delay)
+                is_last = i == len(self._asin_rows) - 1
+                if not is_last and not self._stop_event.is_set():
+                    delay = random.uniform(config.MIN_DELAY_SECONDS, config.MAX_DELAY_SECONDS)
+                    self._stop_event.wait(timeout=delay)
 
         self.update_queue.put(("check_finished", None))

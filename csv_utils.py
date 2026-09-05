@@ -1,7 +1,19 @@
 """Shared, case-insensitive ASIN CSV reading, so 'ASIN'/'asin'/'Asin' headers
-(and a missing 'label' column) all work the same everywhere they're read."""
+(and missing 'label'/'expected_price' columns) all work the same everywhere
+they're read."""
 
 import csv
+
+
+def _parse_price(raw: str):
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+    raw = raw.replace("£", "").replace(",", "").strip()
+    try:
+        return float(raw)
+    except ValueError:
+        return None
 
 
 def read_asin_rows(path: str) -> list[dict]:
@@ -14,5 +26,6 @@ def read_asin_rows(path: str) -> list[dict]:
             if not asin:
                 continue
             label = (lower.get("label") or "").strip()
-            rows.append({"asin": asin, "label": label})
+            expected_price = _parse_price(lower.get("expected_price") or lower.get("price") or "")
+            rows.append({"asin": asin, "label": label, "expected_price": expected_price})
         return rows

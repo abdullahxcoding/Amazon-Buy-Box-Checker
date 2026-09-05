@@ -59,13 +59,31 @@ def alert_lost(asin: str, label: str, offer) -> None:
     send_desktop_notification(f"Buy Box lost: {label or asin}", detail)
 
 
-def alert_recovered(asin: str, label: str) -> None:
-    subject = f"[Buy Box RESOLVED] {label or asin} is back to Amazon"
-    body = f"ASIN: {asin}\nLabel: {label}\nAmazon is again the Buy Box winner. Issue resolved."
-    logger.info("RECOVERED: %s (%s)", asin, label)
-    _record_history(asin, label, "recovered", "Amazon is again the Buy Box winner.")
+def alert_price_mismatch(asin: str, label: str, offer, expected_price: float) -> None:
+    detail = f"Price mismatch: expected £{expected_price:.2f}, currently £{offer.price:.2f}"
+    subject = f"[Price ALERT] {label or asin} price does not match"
+    body = (
+        f"ASIN: {asin}\n"
+        f"Label: {label}\n"
+        f"{detail}\n\n"
+        f"Seller is still Amazon, but the price doesn't match what you set as the "
+        f"expected price. This alert will keep repeating on every check until the "
+        f"price matches again."
+    )
+    logger.warning("PRICE MISMATCH: %s (%s) -- %s", asin, label, detail)
+    _record_history(asin, label, "price_mismatch", detail)
     send_email(subject, body)
-    send_desktop_notification(f"Buy Box recovered: {label or asin}", "Amazon is again the Buy Box winner.")
+    send_desktop_notification(f"Price mismatch: {label or asin}", detail)
+
+
+def alert_recovered(asin: str, label: str) -> None:
+    detail = "Listing is back to normal (sold by Amazon, price matches if set)."
+    subject = f"[RESOLVED] {label or asin} is back to normal"
+    body = f"ASIN: {asin}\nLabel: {label}\n{detail}"
+    logger.info("RECOVERED: %s (%s)", asin, label)
+    _record_history(asin, label, "recovered", detail)
+    send_email(subject, body)
+    send_desktop_notification(f"Resolved: {label or asin}", detail)
 
 
 def alert_check_failed(asin: str, label: str, reason: str) -> None:

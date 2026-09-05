@@ -41,6 +41,7 @@ ctk.set_default_color_theme("blue")
 STATUS_COLORS = {
     "ok": "#1a9c5f",
     "alert": "#d0392b",
+    "price_mismatch": "#b3760a",
     "check_failed": "#9aa1ab",
     "pending": "#6b7280",
 }
@@ -50,9 +51,20 @@ def _fmt_ts(ts):
     return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(ts)) if ts else "-"
 
 
+def _parse_price(raw: str):
+    raw = (raw or "").strip().replace("£", "").replace(",", "")
+    if not raw:
+        return None
+    try:
+        return float(raw)
+    except ValueError:
+        return None
+
+
 def _parse_asin_textbox(text: str) -> list[dict]:
-    """Accepts lines like 'ASIN' or 'ASIN,Label' or 'ASIN,Label' with a
-    header row — same lenient parsing as csv_utils, but from raw text."""
+    """Accepts lines like 'ASIN', 'ASIN,Label', or 'ASIN,Label,ExpectedPrice'
+    (an optional header row is skipped) — same lenient parsing as
+    csv_utils, but from raw text."""
     reader = csv.reader(io.StringIO(text))
     rows = []
     for parts in reader:
@@ -62,14 +74,21 @@ def _parse_asin_textbox(text: str) -> list[dict]:
         if first.lower() == "asin":
             continue
         label = parts[1].strip() if len(parts) > 1 else ""
-        rows.append({"asin": first, "label": label})
+        expected_price = _parse_price(parts[2]) if len(parts) > 2 else None
+        rows.append({"asin": first, "label": label, "expected_price": expected_price})
     return rows
 
 
 def _rows_to_textbox(rows: list[dict]) -> str:
     lines = []
     for r in rows:
-        lines.append(f"{r['asin']},{r['label']}" if r["label"] else r["asin"])
+        price = r.get("expected_price")
+        if price is not None:
+            lines.append(f"{r['asin']},{r['label']},{price}")
+        elif r["label"]:
+            lines.append(f"{r['asin']},{r['label']}")
+        else:
+            lines.append(r["asin"])
     return "\n".join(lines)
 
 
@@ -113,7 +132,9 @@ class App(ctk.CTk):
         stats = ctk.CTkFrame(self, fg_color="transparent")
         stats.pack(fill="x", padx=16, pady=(0, 8))
         self.total_stat = self._make_stat(stats, "Total ASINs")
-        self.alert_stat = self._make_stat(stats, "Active alerts")
+        self.total_alerts_stat = self._make_stat(stats, "Active alerts")
+        self.alert_stat = self._make_stat(stats, "Seller/Shipper mismatch")
+        self.price_stat = self._make_stat(stats, "Price mismatches")
         self.ok_stat = self._make_stat(stats, "OK")
 
         # main split: left = ASIN input, right = tabs (listings/history)
@@ -125,7 +146,7 @@ class App(ctk.CTk):
 
         left = ctk.CTkFrame(body)
         left.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
-        ctk.CTkLabel(left, text="ASIN list (one per line, or 'ASIN,Label')",
+        ctk.CTkLabel(left, text="ASIN list: one per line — ASIN, ASIN,Label, or ASIN,Label,ExpectedPrice",
                      font=ctk.CTkFont(size=12, weight="bold")).pack(anchor="w", padx=12, pady=(12, 4))
         self.asin_box = ctk.CTkTextbox(left, wrap="none")
         self.asin_box.pack(fill="both", expand=True, padx=12, pady=(0, 8))
@@ -149,9 +170,9 @@ class App(ctk.CTk):
 
         self.listings_tree = self._make_tree(
             self.tabs.tab("Listings"),
-            columns=("asin", "label", "status", "detail", "last_checked"),
-            headings=("ASIN", "Label", "Status", "Detail", "Last checked"),
-            widths=(110, 100, 80, 260, 140),
+            columns=("asin", "label", "expected_price", "status", "detail", "last_checked"),
+            headings=("ASIN", "Label", "Expected Price", "Status", "Detail", "Last checked"),
+            widths=(110, 100, 100, 90, 240, 140),
         )
 
         history_toolbar = ctk.CTkFrame(self.tabs.tab("History"), fg_color="transparent")
@@ -201,7 +222,7 @@ class App(ctk.CTk):
 
     def _refresh_listings_placeholder(self, rows):
         for r in rows:
-            self._upsert_row(r["asin"], r["label"], "pending", "Not checked yet", None)
+            self._upsert_row(r["asin"], r["label"], r.get("expected_price"), "pending", "Not checked yet", None)
         self._update_stats()
 
     def _load_csv(self):
@@ -219,9 +240,14 @@ class App(ctk.CTk):
         rows = _parse_asin_textbox(self.asin_box.get("1.0", "end"))
         os.makedirs(os.path.dirname(config.ASIN_CSV_PATH), exist_ok=True)
         with open(config.ASIN_CSV_PATH, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=["asin", "label"])
+            writer = csv.DictWriter(f, fieldnames=["asin", "label", "expected_price"])
             writer.writeheader()
-            writer.writerows(rows)
+            for r in rows:
+                writer.writerow({
+                    "asin": r["asin"],
+                    "label": r["label"],
+                    "expected_price": "" if r.get("expected_price") is None else r["expected_price"],
+                })
         return rows
 
     # ---------- analyzer toggle ----------
@@ -281,13 +307,14 @@ class App(ctk.CTk):
         elif event == "next_check_at":
             self._next_check_at = payload
         elif event == "row_update":
-            self._upsert_row(payload["asin"], payload["label"], payload["status"],
-                              payload["detail"], time.time())
+            self._upsert_row(payload["asin"], payload["label"], payload.get("expected_price"),
+                              payload["status"], payload["detail"], time.time())
             self._append_history_if_notable(payload)
             self._update_stats()
 
-    def _upsert_row(self, asin, label, status, detail, checked_ts):
-        values = (asin, label, status, detail, _fmt_ts(checked_ts))
+    def _upsert_row(self, asin, label, expected_price, status, detail, checked_ts):
+        price_display = f"£{expected_price:.2f}" if expected_price is not None else "-"
+        values = (asin, label, price_display, status, detail, _fmt_ts(checked_ts))
         if asin in self._row_index:
             self.listings_tree.item(self._row_index[asin], values=values, tags=(status,))
         else:
@@ -311,7 +338,8 @@ class App(ctk.CTk):
             lines = f.readlines()[-200:]
         for line in reversed(lines):
             e = json.loads(line)
-            tag = {"lost": "alert", "recovered": "ok", "check_failed": "check_failed"}.get(e["event"], "")
+            tag = {"lost": "alert", "price_mismatch": "price_mismatch", "recovered": "ok",
+                   "check_failed": "check_failed"}.get(e["event"], "")
             self.history_tree.insert("", "end", values=(
                 _fmt_ts(e["ts"]), e["asin"], e.get("label", ""), e["event"], e["detail"]
             ), tags=(tag,))
@@ -339,11 +367,15 @@ class App(ctk.CTk):
 
     def _update_stats(self):
         total = len(self._row_index)
-        alerts = sum(1 for item in self.listings_tree.get_children()
-                     if self.listings_tree.item(item, "values")[2] == "alert")
+        statuses = [self.listings_tree.set(item, "status") for item in self.listings_tree.get_children()]
+        alerts = statuses.count("alert")
+        price_mismatches = statuses.count("price_mismatch")
+        ok = statuses.count("ok")
         self.total_stat.configure(text=str(total))
+        self.total_alerts_stat.configure(text=str(alerts + price_mismatches))
         self.alert_stat.configure(text=str(alerts))
-        self.ok_stat.configure(text=str(total - alerts))
+        self.price_stat.configure(text=str(price_mismatches))
+        self.ok_stat.configure(text=str(ok))
 
     def _tick_countdown(self):
         if self._next_check_at:
