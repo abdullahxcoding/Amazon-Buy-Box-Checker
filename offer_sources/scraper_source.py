@@ -52,12 +52,35 @@ CAPTCHA_MARKERS = [
     "To discuss automated access to Amazon data",
 ]
 
-# Combined row: "Shipper / Seller" followed by one name (same line or next line).
-COMBINED_SHIPPER_SELLER_RE = re.compile(r"Shipper\s*/\s*Seller\s*\n?\s*([^\n]{1,80})", re.IGNORECASE)
+def _label_line(label: str) -> re.Pattern:
+    """A label that is the WHOLE line, with its value on the next line.
+    Anchoring this way (rather than a loose \\bWORD\\b anywhere in the
+    flattened page text) is deliberate: Amazon's boilerplate elsewhere on
+    the page contains the bare words "Seller"/"Shipper" mid-sentence (e.g.
+    "Brand Registry and New Seller Incentives", "Seller Fulfilled Prime",
+    "#1 Best Seller") which a loose match would wrongly treat as the
+    buy-box seller name — this bit us in production (falsely reporting a
+    seller of "Incentives" on every check, from the "New Seller
+    Incentives" footer link). Requiring the label to be alone on its own
+    line excludes all of those, since none of them have "Seller"/"Shipper"
+    as the entire line."""
+    return re.compile(rf"^{label}\s*$\n\s*(.{{1,80}})\s*$", re.IGNORECASE | re.MULTILINE)
+
+
+# Combined row: "Shipper / Seller" alone on a line, value on the next line.
+COMBINED_SHIPPER_SELLER_RE = _label_line(r"Shipper\s*/\s*Seller")
 # Separate rows, used when shipper and seller differ.
-SELLER_RE = re.compile(r"(?<!/)\bSeller\b\s*\n?\s*([^\n]{1,80})", re.IGNORECASE)
-SHIPPER_RE = re.compile(r"\bShipper\b\s*\n?\s*([^\n]{1,80})", re.IGNORECASE)
-# Classic wording fallback (older UI / other marketplaces).
+SHIPPER_RE = _label_line(r"Shipper")
+SELLER_RE = _label_line(r"Seller")
+# Alternate current UI layout seen on some product pages/categories:
+# "Dispatches from" / "Sold by" as their own separate label lines instead
+# of "Shipper" / "Seller".
+DISPATCHES_FROM_RE = _label_line(r"Dispatches from")
+SOLD_BY_LINE_RE = _label_line(r"Sold by")
+# Classic inline wording fallback (older UI / other marketplaces): "Sold by
+# X" with the name on the SAME line, optionally followed by "and Ships
+# from Y". Deliberately last-resort and not line-anchored, since this
+# format doesn't have the label-alone-on-its-line shape the others do.
 SOLD_BY_RE = re.compile(r"Sold by[:\s]+([^.\n|]+?)(?:\s*and\s*Ships from|\s*\||$)", re.IGNORECASE)
 FULFILLED_BY_AMAZON_RE = re.compile(r"Fulfilled by Amazon", re.IGNORECASE)
 
@@ -117,6 +140,13 @@ def _extract_shipper_seller(body_text: str):
     seller = seller_m.group(1).strip() if seller_m else None
     if shipper or seller:
         return shipper, seller
+
+    dispatches_m = DISPATCHES_FROM_RE.search(body_text)
+    sold_by_line_m = SOLD_BY_LINE_RE.search(body_text)
+    dispatches = dispatches_m.group(1).strip() if dispatches_m else None
+    sold_by_line = sold_by_line_m.group(1).strip() if sold_by_line_m else None
+    if dispatches or sold_by_line:
+        return dispatches, sold_by_line
 
     classic = SOLD_BY_RE.search(body_text)
     if classic:

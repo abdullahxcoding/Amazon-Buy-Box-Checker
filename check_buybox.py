@@ -72,7 +72,12 @@ def check_one(source, asin: str, label: str, expected_price, state: dict) -> dic
 
     if not offer.is_sold_by_amazon:
         status = "alert"
-        detail = offer.raw_note or f"Buy Box won by: {offer.seller_identifier}"
+        # Deliberately built from just the seller identity, not
+        # offer.raw_note (which always tacks on price when found) — the
+        # issue here is who holds the Buy Box, not the price, so the price
+        # would be noise that makes the real problem harder to spot.
+        detail = (f"Buy Box won by: {offer.seller_identifier}" if offer.seller_identifier
+                  else offer.raw_note or "Amazon is no longer the Buy Box winner.")
         alert_lost(asin, label, offer)
     elif expected_price is not None and offer.price is not None and \
             abs(offer.price - expected_price) > PRICE_TOLERANCE:

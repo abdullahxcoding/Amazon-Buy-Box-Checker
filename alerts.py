@@ -44,7 +44,12 @@ def _record_history(asin: str, label: str, event: str, detail: str) -> None:
 
 
 def alert_lost(asin: str, label: str, offer) -> None:
-    detail = offer.raw_note or "Amazon is no longer the Buy Box winner."
+    # Built from just the seller identity, not offer.raw_note (which
+    # always tacks on price when found) — the issue here is who holds the
+    # Buy Box, not the price, so price would be noise obscuring the
+    # real problem in the notification/email.
+    detail = (f"Buy Box won by: {offer.seller_identifier}" if offer.seller_identifier
+              else offer.raw_note or "Amazon is no longer the Buy Box winner.")
     subject = f"[Buy Box ALERT] {label or asin} is NO LONGER sold by Amazon"
     body = (
         f"ASIN: {asin}\n"
