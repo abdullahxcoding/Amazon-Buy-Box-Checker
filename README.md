@@ -111,8 +111,14 @@ no terminal, no venv activation needed.
 
 - Every check logs to `logs/checker.log`.
 - **Windows desktop notification** (toast popup) fires automatically on this
-  PC when an alert fires or resolves — no setup needed, uses `winotify`.
-  Only appears while you're logged into an active desktop session.
+  PC when an alert fires or resolves — no setup needed. It's a "reminder"
+  toast, meaning it does **not** auto-dismiss after a few seconds like a
+  normal notification — it stays on screen and sits in the Action Center
+  until you act on it, with two buttons: **Open** (brings up the app so
+  you can look at the issue) and **Dismiss** (closes it). Only appears
+  while you're logged into an active desktop session. A repeat alert for
+  the same ASIN replaces the previous toast for it rather than piling up
+  duplicates.
 - If SMTP settings are filled in in `.env`, email alerts are also sent:
   - `[Buy Box ALERT]` when a listing drifts away from Amazon as seller —
     repeats every check while the issue persists.

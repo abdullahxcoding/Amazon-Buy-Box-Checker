@@ -61,7 +61,7 @@ def alert_lost(asin: str, label: str, offer) -> None:
     logger.warning("LOST: %s (%s) -- %s", asin, label, detail)
     _record_history(asin, label, "lost", detail)
     send_email(subject, body)
-    send_desktop_notification(f"Buy Box lost: {label or asin}", detail)
+    send_desktop_notification(f"Buy Box lost: {label or asin}", detail, tag=asin)
 
 
 def alert_price_mismatch(asin: str, label: str, offer, expected_price: float) -> None:
@@ -78,7 +78,7 @@ def alert_price_mismatch(asin: str, label: str, offer, expected_price: float) ->
     logger.warning("PRICE MISMATCH: %s (%s) -- %s", asin, label, detail)
     _record_history(asin, label, "price_mismatch", detail)
     send_email(subject, body)
-    send_desktop_notification(f"Price mismatch: {label or asin}", detail)
+    send_desktop_notification(f"Price mismatch: {label or asin}", detail, tag=asin)
 
 
 def alert_recovered(asin: str, label: str) -> None:
@@ -88,7 +88,7 @@ def alert_recovered(asin: str, label: str) -> None:
     logger.info("RECOVERED: %s (%s)", asin, label)
     _record_history(asin, label, "recovered", detail)
     send_email(subject, body)
-    send_desktop_notification(f"Resolved: {label or asin}", detail)
+    send_desktop_notification(f"Resolved: {label or asin}", detail, tag=asin)
 
 
 def alert_check_failed(asin: str, label: str, reason: str) -> None:
